@@ -1,0 +1,100 @@
+import numpy as np
+import math
+class SparseTable2D:
+    def __init__(self, matrix):
+        self.matrix = np.asarray(matrix)
+        self.n, self.m = self.matrix.shape
+        max_dim = max(self.n, self.m)
+        self.log_table = np.zeros(max_dim + 1, dtype=int)
+        for i in range(2, max_dim + 1):
+            self.log_table[i] = self.log_table[i // 2] + 1
+        self.max_log_n = self.log_table[self.n]
+        self.max_log_m = self.log_table[self.m]
+        self.st = np.zeros((self.n, self.m, self.max_log_n + 1, self.max_log_m + 1))
+
+        print("Preprocessing...")
+        self._preprocess()
+        print("Preprocessing complete.")
+
+    def _preprocess(self):
+        # Base case: 2^0 x 2^0 (1x1) rectangles are the elements themselves
+        self.st[:, :, 0, 0] = self.matrix
+
+        # DP Step 1: Build along columns (for k_n=0, vary k_m)
+        for k_m in range(1, self.max_log_m + 1):
+            # Calculate how many columns can start a 2^k_m width rectangle
+            end_col = self.m - (1 << k_m) + 1
+            # The two halves to compare
+            half_width = 1 << (k_m - 1)
+            part1 = self.st[:, :end_col, 0, k_m - 1]
+            part2 = self.st[:, half_width:end_col + half_width, 0, k_m - 1]
+            # Vectorized minimum calculation
+            self.st[:, :end_col, 0, k_m] = np.minimum(part1, part2)
+
+        # DP Step 2: Build along rows using previous results
+        for k_n in range(1, self.max_log_n + 1):
+            # Calculate how many rows can start a 2^k_n height rectangle
+            end_row = self.n - (1 << k_n) + 1
+            # The two halves to compare
+            half_height = 1 << (k_n - 1)
+            part1 = self.st[:end_row, :, k_n - 1, :]
+            part2 = self.st[half_height:end_row + half_height, :, k_n - 1, :]
+            # Vectorized minimum calculation
+            self.st[:end_row, :, k_n, :] = np.minimum(part1, part2)
+
+    def query(self, r1, c1, r2, c2):
+        # Input validation
+        if not (0 <= r1 <= r2 < self.n and 0 <= c1 <= c2 < self.m):
+            raise ValueError("Query coordinates are out of bounds.")
+        height = r2 - r1 + 1
+        width = c2 - c1 + 1
+        k_n = self.log_table[height]
+        k_m = self.log_table[width]
+        val1 = self.st[r1, c1, k_n, k_m]
+        val2 = self.st[r1, c2 - (1 << k_m) + 1, k_n, k_m]
+        val3 = self.st[r2 - (1 << k_n) + 1, c1, k_n, k_m]
+        val4 = self.st[r2 - (1 << k_n) + 1, c2 - (1 << k_m) + 1, k_n, k_m]
+
+        return min(val1, val2, val3, val4)
+matrix_data = [
+    [8, 3, 4, 1, 9, 6],
+    [2, 7, 5, 0, 8, 3],
+    [9, 2, 1, 6, 7, 4],
+    [3, 8, 2, 5, 1, 9],
+    [5, 4, 7, 3, 2, 1]
+]
+
+st2d = SparseTable2D(matrix_data)
+print("\nMatrix:")
+print(st2d.matrix)
+print("-" * 30)
+r1, c1, r2, c2 = 0, 0, 2, 4
+min_val = st2d.query(r1, c1, r2, c2)
+print(f"Querying rectangle from ({r1}, {c1}) to ({r2}, {c2})...")
+print(f"Minimum value: {min_val}")
+naive_min = st2d.matrix[r1:r2+1, c1:c2+1].min()
+assert min_val == naive_min
+print(f"Verified (NumPy): {naive_min}")
+print("-" * 30)
+r1, c1, r2, c2 = 2, 2, 4, 5
+min_val = st2d.query(r1, c1, r2, c2)
+print(f"Querying rectangle from ({r1}, {c1}) to ({r2}, {c2})...")
+print(f"Minimum value: {min_val}")
+naive_min = st2d.matrix[r1:r2+1, c1:c2+1].min()
+assert min_val == naive_min
+print(f"Verified (NumPy): {naive_min}")
+print("-" * 30)
+r1, c1, r2, c2 = 1, 1, 1, 1
+min_val = st2d.query(r1, c1, r2, c2)
+print(f"Querying rectangle from ({r1}, {c1}) to ({r2}, {c2})...")
+print(f"Minimum value: {min_val}")
+assert min_val == 7
+print(f"Verified (Value): 7")
+print("-" * 30)
+r1, c1, r2, c2 = 0, 0, 4, 5
+min_val = st2d.query(r1, c1, r2, c2)
+print(f"Querying the entire matrix...")
+print(f"Minimum value: {min_val}")
+assert min_val == 0
+print(f"Verified (Value): 0")
+print("-" * 30)
